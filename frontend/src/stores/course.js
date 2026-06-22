@@ -11,7 +11,19 @@ export const useCourseStore = defineStore('course', {
     async fetchCourses(params = {}) {
       this.loading = true
       try {
-        const data = await request.get('/courses', { params })
+        const query = {}
+        if (params.keyword) query.keyword = params.keyword
+        if (params.instructor) query.instructor = params.instructor
+        if (params.statuses && params.statuses.length) query.statuses = params.statuses
+        if (params.status) query.status = params.status
+        if (params.dateRange && params.dateRange.length === 2) {
+          query.start_date = params.dateRange[0]
+          query.end_date = params.dateRange[1]
+        }
+        if (params.start_date) query.start_date = params.start_date
+        if (params.end_date) query.end_date = params.end_date
+        if (params.minRating) query.min_rating = params.minRating
+        const data = await request.get('/courses', { params: query })
         this.courses = data.courses || data || []
         return this.courses
       } finally {

@@ -30,13 +30,20 @@ function updateCourseStatus(courseId) {
 }
 
 router.get('/', auth, (req, res) => {
-  const { status, instructor, keyword, start_date, end_date } = req.query;
+  const { status, instructor, keyword, start_date, end_date, statuses } = req.query;
   let sql = 'SELECT * FROM courses WHERE 1=1';
   const params = [];
 
-  if (status) {
-    sql += ' AND status = ?';
-    params.push(status);
+  let statusList = statuses || status;
+  if (statusList) {
+    if (!Array.isArray(statusList)) {
+      statusList = String(statusList).split(',').filter(Boolean);
+    }
+    if (statusList.length > 0) {
+      const placeholders = statusList.map(() => '?').join(',');
+      sql += ` AND status IN (${placeholders})`;
+      params.push(...statusList);
+    }
   }
   if (instructor) {
     sql += ' AND instructor LIKE ?';

@@ -140,4 +140,33 @@ router.put('/:id/assistant-mark', auth, requireRole('assistant', 'admin'), (req,
   res.json({ booking: updated });
 });
 
+router.post('/batch-attendance', auth, requireRole('assistant', 'admin'), (req, res) => {
+  const { course_id, attendances = [] } = req.body;
+  if (!course_id) {
+    return res.status(400).json({ message: '课程ID必填' });
+  }
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(course_id);
+  if (!course) {
+    return res.status(404).json({ message: '课程不存在' });
+  }
+
+  let updated = 0;
+  const errors = [];
+  const stmt = db.prepare('UPDATE bookings SET status = ? WHERE id = ?');
+  for (const item of attendances) {
+    try {
+      const statusMap = { present: 'attended', absent: 'no_show', attended: 'attended', no_show: 'no_show' };
+      const targetStatus = statusMap[item.status];
+      if (targetStatus && item.booking_id) {
+        const info = stmt.run(targetStatus, item.booking_id);
+        if (info.changes > 0) updated++;
+      }
+    } catch (e) {
+      errors.push(`booking_id=${item.booking_id}: ${e.message}`);
+    }
+  }
+
+  res.json({ message: '批量更新完成', updated_count: updated, errors });
+});
+
 module.exports = router;

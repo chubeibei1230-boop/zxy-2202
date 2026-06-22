@@ -169,6 +169,53 @@ router.get('/feedback', auth, (req, res) => {
   });
 });
 
+router.get('/feedback/:courseId', auth, (req, res) => {
+  const courseId = Number(req.params.courseId);
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  if (!course) {
+    return res.status(404).json({ message: '课程不存在' });
+  }
+
+  const ratingDistribution = [];
+  for (let r = 1; r <= 5; r++) {
+    const count = db.prepare('SELECT COUNT(*) as count FROM feedbacks WHERE course_id = ? AND rating = ?').get(courseId, r).count;
+    ratingDistribution.push({ rating: r, count, name: `${r}星`, value: count });
+  }
+
+  const avgRow = db.prepare('SELECT AVG(rating) as avg, COUNT(*) as total FROM feedbacks WHERE course_id = ?').get(courseId);
+  const avgRating = avgRow.avg ? parseFloat(avgRow.avg.toFixed(2)) : 0;
+
+  const feedbackList = db.prepare(
+    `SELECT f.*, u.name as student_name, u.username 
+     FROM feedbacks f 
+     LEFT JOIN users u ON f.user_id = u.id 
+     WHERE f.course_id = ? 
+     ORDER BY f.created_at DESC`
+  ).all(courseId).map(f => ({
+    ...f,
+    answers: f.content ? (() => {
+      try { return JSON.parse(f.content); } catch { return {}; }
+    })() : {},
+    content: f.content ? (() => {
+      try {
+        const parsed = JSON.parse(f.content);
+        return parsed.__text || '';
+      } catch {
+        return f.content;
+      }
+    })() : ''
+  }));
+
+  res.json({
+    course_id: courseId,
+    course_title: course.title,
+    avg_rating: avgRating,
+    total: avgRow.total || 0,
+    rating_distribution: ratingDistribution,
+    feedbackList
+  });
+});
+
 router.get('/courses', auth, (req, res) => {
   const { keyword, instructor, status, start_date, end_date, min_rating, max_rating } = req.query;
 

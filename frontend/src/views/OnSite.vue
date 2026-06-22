@@ -155,7 +155,7 @@
               <div class="info-row">
                 <el-icon><Location /></el-icon>
                 <span class="k">教室</span>
-                <span class="v">{{ selectedCourse.location }}</span>
+                <span class="v">{{ selectedCourse.location || selectedCourse.classroom_area || '-' }}</span>
               </div>
               <div class="info-row">
                 <el-icon><Calendar /></el-icon>
@@ -263,7 +263,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCourseStore } from '@/stores/course'
@@ -316,22 +316,35 @@ const attendanceRate = computed(() => {
 
 watch(presentCount, v => { summaryForm.actual_attendance = v })
 
-function handleSelectCourse(id) {
+async function handleSelectCourse(id) {
   if (!id) {
     attendanceList.value = []
     return
   }
-  attendanceList.value = [
-    { id: 1, student_name: '张小明', phone: '138****1234', booking_time: '2026-06-20 10:15:00', attendance_status: 'present', check_in_method: '扫码签到', remark: '' },
-    { id: 2, student_name: '李小红', phone: '139****5678', booking_time: '2026-06-20 11:02:00', attendance_status: 'present', check_in_method: '现场确认', remark: '' },
-    { id: 3, student_name: '王小华', phone: '137****9012', booking_time: '2026-06-21 09:30:00', attendance_status: 'absent', check_in_method: '', remark: '家中有事请假' },
-    { id: 4, student_name: '赵小强', phone: '136****3456', booking_time: '2026-06-21 14:45:00', attendance_status: 'pending', check_in_method: '', remark: '' },
-    { id: 5, student_name: '孙小美', phone: '135****7890', booking_time: '2026-06-22 08:20:00', attendance_status: 'present', check_in_method: '扫码签到', remark: '' },
-    { id: 6, student_name: '周小龙', phone: '134****1122', booking_time: '2026-06-22 15:10:00', attendance_status: 'present', check_in_method: '现场确认', remark: '迟到10分钟' },
-    { id: 7, student_name: '吴小丽', phone: '133****3344', booking_time: '2026-06-23 09:45:00', attendance_status: 'pending', check_in_method: '', remark: '' },
-    { id: 8, student_name: '郑小伟', phone: '132****5566', booking_time: '2026-06-23 10:20:00', attendance_status: 'absent', check_in_method: '', remark: '未联系上' }
-  ]
-  summaryForm.actual_attendance = presentCount.value
+  try {
+    const data = await request.get('/bookings', { params: { course_id: id } })
+    const bookings = (data.bookings || []).filter(b => b.status !== 'cancelled')
+    attendanceList.value = bookings.map(b => {
+      let status = 'pending'
+      if (b.status === 'attended') status = 'present'
+      else if (b.status === 'no_show') status = 'absent'
+      return {
+        id: b.id,
+        booking_id: b.id,
+        student_name: b.user?.name || b.user?.username || '学员',
+        phone: b.user?.phone || '',
+        booking_time: b.booked_at,
+        attendance_status: status,
+        check_in_method: status === 'present' ? '系统记录' : '',
+        remark: ''
+      }
+    })
+  } catch (e) {
+    attendanceList.value = []
+  }
+  nextTick(() => {
+    summaryForm.actual_attendance = presentCount.value
+  })
 }
 
 function markAll(status) {
@@ -349,19 +362,15 @@ function resetAll() {
 }
 
 async function handleSave() {
-  try {
-    await request.post(`/bookings/batch-attendance`, {
-      course_id: selector.courseId,
-      attendances: attendanceList.value.map(x => ({
-        booking_id: x.id,
-        status: x.attendance_status,
-        remark: x.remark
-      }))
-    })
-    ElMessage.success('到场信息已保存为草稿')
-  } catch (e) {
-    ElMessage.success('保存成功（模拟）')
-  }
+  await request.post(`/bookings/batch-attendance`, {
+    course_id: selector.courseId,
+    attendances: attendanceList.value.map(x => ({
+      booking_id: x.id,
+      status: x.attendance_status,
+      remark: x.remark
+    }))
+  })
+  ElMessage.success('到场信息已保存')
 }
 
 async function handleSubmit() {
@@ -394,8 +403,6 @@ async function handleSubmit() {
     }
     await request.post(`/course-summaries`, payload)
     ElMessage.success('结课摘要提交成功！')
-  } catch (e) {
-    ElMessage.success('提交成功（模拟）')
   } finally {
     submitting.value = false
   }
@@ -404,10 +411,15 @@ async function handleSubmit() {
 onMounted(async () => {
   await courseStore.fetchCourses({ status: ['pending', 'ongoing'] })
   if (courseStore.courses?.length) {
-    availableCourses.value = [...availableCourses.value, ...courseStore.courses]
+    const courseIds = new Set(availableCourses.value.map(c => c.id))
+    const newCourses = courseStore.courses.filter(c => !courseIds.has(c.id)).map(c => ({
+      ...c,
+      location: c.location || c.classroom_area
+    }))
+    availableCourses.value = [...availableCourses.value, ...newCourses]
   }
   if (selector.courseId) {
-    handleSelectCourse(selector.courseId)
+    await handleSelectCourse(selector.courseId)
   }
 })
 </script>

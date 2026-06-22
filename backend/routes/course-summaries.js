@@ -25,8 +25,30 @@ router.get('/', auth, (req, res) => {
   res.json({ summaries: rows });
 });
 
+function processAttendances(attendances) {
+  if (!Array.isArray(attendances) || attendances.length === 0) return 0;
+  const stmt = db.prepare('UPDATE bookings SET status = ? WHERE id = ?');
+  let updated = 0;
+  const statusMap = {
+    present: 'attended', absent: 'no_show',
+    attended: 'attended', no_show: 'no_show',
+    'attended': 'attended', 'no_show': 'no_show'
+  };
+  for (const item of attendances) {
+    const targetStatus = statusMap[item.status];
+    if (targetStatus && item.booking_id) {
+      try {
+        const info = stmt.run(targetStatus, item.booking_id);
+        if (info.changes > 0) updated++;
+      } catch (e) {}
+    }
+  }
+  return updated;
+}
+
 router.post('/', auth, requireRole('assistant', 'admin'), (req, res) => {
-  const { course_id, actual_attendance, materials_prepared, exception_notes, summary } = req.body;
+  const { course_id, actual_attendance, materials_prepared, exception_notes, summary,
+          materials, exceptions, attendances } = req.body;
 
   if (!course_id) {
     return res.status(400).json({ message: '课程ID必填' });
@@ -37,32 +59,47 @@ router.post('/', auth, requireRole('assistant', 'admin'), (req, res) => {
     return res.status(404).json({ message: '课程不存在' });
   }
 
-  const existing = db.prepare('SELECT * FROM course_summaries WHERE course_id = ?').get(course_id);
-  if (existing) {
-    return res.status(400).json({ message: '该课程已存在结课摘要，请使用更新接口' });
-  }
+  const finalMaterials = materials_prepared !== undefined ? materials_prepared : (materials || '');
+  const finalExceptions = exception_notes !== undefined ? exception_notes : (exceptions || '');
+  const finalSummary = summary || '';
+  const finalAttendance = actual_attendance !== undefined ? actual_attendance : 0;
 
+  if (attendances) processAttendances(attendances);
+
+  const existing = db.prepare('SELECT * FROM course_summaries WHERE course_id = ?').get(course_id);
   const assistantId = req.user.role === 'admin' ? (req.body.assistant_id || req.user.id) : req.user.id;
 
-  const info = db.prepare(
-    `INSERT INTO course_summaries (course_id, assistant_id, actual_attendance, materials_prepared, exception_notes, summary) 
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    course_id,
-    assistantId,
-    actual_attendance || 0,
-    materials_prepared || '',
-    exception_notes || '',
-    summary || ''
-  );
+  let summaryRow;
+  if (existing) {
+    if (req.user.role === 'assistant' && existing.assistant_id !== req.user.id) {
+      return res.status(403).json({ message: '只能修改自己创建的结课摘要' });
+    }
+    db.prepare(
+      `UPDATE course_summaries SET actual_attendance = ?, materials_prepared = ?, exception_notes = ?, summary = ?, assistant_id = ? WHERE id = ?`
+    ).run(
+      finalAttendance !== undefined ? finalAttendance : existing.actual_attendance,
+      finalMaterials !== undefined ? finalMaterials : existing.materials_prepared,
+      finalExceptions !== undefined ? finalExceptions : existing.exception_notes,
+      finalSummary !== undefined ? finalSummary : existing.summary,
+      assistantId,
+      existing.id
+    );
+    summaryRow = db.prepare(
+      'SELECT cs.*, c.title as course_title, c.instructor FROM course_summaries cs LEFT JOIN courses c ON cs.course_id = c.id WHERE cs.id = ?'
+    ).get(existing.id);
+  } else {
+    const info = db.prepare(
+      `INSERT INTO course_summaries (course_id, assistant_id, actual_attendance, materials_prepared, exception_notes, summary) 
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(course_id, assistantId, finalAttendance || 0, finalMaterials || '', finalExceptions || '', finalSummary || '');
+    summaryRow = db.prepare(
+      'SELECT cs.*, c.title as course_title, c.instructor FROM course_summaries cs LEFT JOIN courses c ON cs.course_id = c.id WHERE cs.id = ?'
+    ).get(info.lastInsertRowid);
+  }
 
-  const row = db.prepare(
-    'SELECT cs.*, c.title as course_title, c.instructor FROM course_summaries cs LEFT JOIN courses c ON cs.course_id = c.id WHERE cs.id = ?'
-  ).get(info.lastInsertRowid);
+  db.prepare("UPDATE courses SET status = 'feedback_pending' WHERE id = ? AND status IN ('ongoing', 'pending')").run(course_id);
 
-  db.prepare("UPDATE courses SET status = 'completed' WHERE id = ? AND status IN ('feedback_pending', 'ongoing')").run(course_id);
-
-  res.status(201).json({ summary: row });
+  res.status(existing ? 200 : 201).json({ summary: summaryRow, created: !existing });
 });
 
 router.put('/:id', auth, requireRole('assistant', 'admin'), (req, res) => {
@@ -75,17 +112,19 @@ router.put('/:id', auth, requireRole('assistant', 'admin'), (req, res) => {
     return res.status(403).json({ message: '只能修改自己创建的结课摘要' });
   }
 
-  const { actual_attendance, materials_prepared, exception_notes, summary } = req.body;
+  const { actual_attendance, materials_prepared, exception_notes, summary,
+          materials, exceptions, attendances } = req.body;
+
+  const finalMaterials = materials_prepared !== undefined ? materials_prepared : (materials !== undefined ? materials : existing.materials_prepared);
+  const finalExceptions = exception_notes !== undefined ? exception_notes : (exceptions !== undefined ? exceptions : existing.exception_notes);
+  const finalSummary = summary !== undefined ? summary : existing.summary;
+  const finalAttendance = actual_attendance !== undefined ? actual_attendance : existing.actual_attendance;
+
+  if (attendances) processAttendances(attendances);
 
   db.prepare(
     `UPDATE course_summaries SET actual_attendance = ?, materials_prepared = ?, exception_notes = ?, summary = ? WHERE id = ?`
-  ).run(
-    actual_attendance !== undefined ? actual_attendance : existing.actual_attendance,
-    materials_prepared !== undefined ? materials_prepared : existing.materials_prepared,
-    exception_notes !== undefined ? exception_notes : existing.exception_notes,
-    summary !== undefined ? summary : existing.summary,
-    req.params.id
-  );
+  ).run(finalAttendance, finalMaterials, finalExceptions, finalSummary, req.params.id);
 
   const row = db.prepare(
     'SELECT cs.*, c.title as course_title, c.instructor FROM course_summaries cs LEFT JOIN courses c ON cs.course_id = c.id WHERE cs.id = ?'

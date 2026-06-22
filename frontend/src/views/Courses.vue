@@ -112,7 +112,7 @@
           <el-table-column prop="location" label="教室区域" width="120">
             <template #default="{ row }">
               <el-icon :size="14"><Location /></el-icon>
-              {{ row.location || '-' }}
+              {{ row.location || row.classroom_area || '-' }}
             </template>
           </el-table-column>
           <el-table-column label="容量/已约" width="140">
@@ -215,7 +215,7 @@
                 </div>
                 <div class="card-meta">
                   <div><el-icon :size="13"><Calendar /></el-icon> {{ formatDate(course.start_time) }}</div>
-                  <div><el-icon :size="13"><Location /></el-icon> {{ course.location || '待定' }}</div>
+                  <div><el-icon :size="13"><Location /></el-icon> {{ course.location || course.classroom_area || '待定' }}</div>
                   <div><el-icon :size="13"><Clock /></el-icon> {{ formatDurationShort(course.start_time, course.end_time) }}</div>
                 </div>
                 <div class="card-progress">
