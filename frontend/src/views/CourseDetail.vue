@@ -718,8 +718,8 @@ async function handleRejectWaitlist() {
     { type: 'warning', confirmButtonText: '拒绝补位', cancelButtonText: '再想想' }
   ).then(async () => {
     try {
-      await courseStore.rejectWaitlist(myWaitlist.value.id)
-      ElMessage.success('已拒绝补位，名额顺延给下一位')
+      const result = await courseStore.rejectWaitlist(myWaitlist.value.id)
+      ElMessage.success(result?.message || '已拒绝本次补位，已保留候补位置')
       stopCountdown()
       await refreshData()
     } catch (e) {}

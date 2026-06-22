@@ -372,8 +372,8 @@ async function handleRejectWaitlist(row) {
         confirmButtonClass: 'el-button--danger'
       }
     )
-    await courseStore.rejectWaitlist(row.id)
-    ElMessage.success('已拒绝补位，名额将顺延给下一位候补')
+    const result = await courseStore.rejectWaitlist(row.id)
+    ElMessage.success(result?.message || '已拒绝本次补位，已保留候补位置')
     await loadAll()
   } catch (e) {}
 }

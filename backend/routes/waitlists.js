@@ -103,6 +103,8 @@ function processWaitlistFill(courseId) {
 }
 
 router.get('/my', auth, requireRole('student'), (req, res) => {
+  expireOldNotifications(null);
+
   const rows = db.prepare(`
     SELECT * FROM waitlists 
     WHERE user_id = ?
@@ -345,25 +347,20 @@ router.post('/:id/reject', auth, requireRole('student'), (req, res) => {
   }
   
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(waitlist.course_id);
-  const bookedCount = getBookedCount(waitlist.course_id);
-  
-  if (bookedCount < course.capacity) {
-    db.prepare(`
-      UPDATE waitlists SET status = 'rejected', rejected_at = ?, 
-      notified_at = NULL, expires_at = NULL WHERE id = ?
-    `).run(now, id);
-    addWaitlistLog(id, waitlist.course_id, userId, 'rejected', userId, { reason: '拒绝补位，名额充足' });
-    res.json({ message: '已拒绝补位，当前课程有名额，可直接预约' });
-  } else {
-    db.prepare(`
-      UPDATE waitlists SET status = 'waiting', joined_at = ?, 
-      notified_at = NULL, expires_at = NULL WHERE id = ?
-    `).run(now, id);
-    addWaitlistLog(id, waitlist.course_id, userId, 'rejected', userId, { reason: '拒绝补位，回到候补队列末尾' });
-    processWaitlistFill(waitlist.course_id);
-    res.json({ message: '已拒绝补位，已回到候补队列末尾，名额将顺延给下一位候补' });
-  }
+
+  db.prepare(`
+    UPDATE waitlists SET status = 'rejected', rejected_at = ?, 
+    notified_at = NULL, expires_at = NULL WHERE id = ?
+  `).run(now, id);
+  addWaitlistLog(id, waitlist.course_id, userId, 'rejected', userId, { reason: '拒绝本次补位，保留候补位置' });
+
+  processWaitlistFill(waitlist.course_id);
+
+  db.prepare(`
+    UPDATE waitlists SET status = 'waiting', notified_at = NULL, expires_at = NULL WHERE id = ?
+  `).run(id);
+
+  res.json({ message: '已拒绝本次补位，已保留候补位置，名额将顺延给下一位候补' });
 });
 
 router.delete('/:id/admin-remove', auth, requireRole('admin', 'assistant'), (req, res) => {
