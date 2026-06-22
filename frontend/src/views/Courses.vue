@@ -278,10 +278,13 @@ import { useUserStore } from '@/stores/user'
 import { STATUS_MAP, STATUS_OPTIONS } from '@/constants'
 import { formatDate, formatDuration } from '@/utils'
 import dayjs from 'dayjs'
+import isBetween from 'dayjs/plugin/isBetween'
 import {
   Collection, Search, Refresh, Reading, Calendar, Location, Clock,
   User, View, Check, Close, Edit, Delete, Grid, Menu
 } from '@element-plus/icons-vue'
+
+dayjs.extend(isBetween)
 
 const router = useRouter()
 const courseStore = useCourseStore()
