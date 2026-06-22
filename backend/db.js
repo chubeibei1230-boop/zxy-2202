@@ -83,6 +83,7 @@ function initTables() {
       expires_at TEXT,
       removed_by INTEGER,
       removed_reason TEXT,
+      removed_at TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
       FOREIGN KEY (removed_by) REFERENCES users(id) ON DELETE SET NULL,
@@ -208,8 +209,17 @@ function seedData() {
 
 function initDB() {
   initTables();
+  migrateTables();
   seedData();
   return db;
+}
+
+function migrateTables() {
+  const columns = db.pragma("table_info(waitlists)").map(c => c.name);
+  if (!columns.includes('removed_at')) {
+    db.exec("ALTER TABLE waitlists ADD COLUMN removed_at TEXT");
+    console.log('数据库迁移: 已添加 waitlists.removed_at 字段');
+  }
 }
 
 module.exports = { db, initDB };

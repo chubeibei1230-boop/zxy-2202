@@ -49,7 +49,7 @@ function expireOldNotificationsInternal(courseId) {
   
   const affectedCourseIds = new Set();
   for (const w of expired) {
-    db.prepare("UPDATE waitlists SET status = 'expired' WHERE id = ?").run(w.id);
+    db.prepare("UPDATE waitlists SET status = 'expired', rejected_at = ? WHERE id = ?").run(now, w.id);
     addWaitlistLog(w.id, w.course_id, w.user_id, 'expired', null, { reason: '确认超时' });
     affectedCourseIds.add(w.course_id);
   }
@@ -130,12 +130,15 @@ router.get('/course/:courseId', auth, (req, res) => {
   
   const rows = db.prepare(`
     SELECT * FROM waitlists 
-    WHERE course_id = ? AND status IN ('waiting', 'notified', 'confirmed')
+    WHERE course_id = ?
     ORDER BY 
       CASE status 
         WHEN 'notified' THEN 0 
         WHEN 'waiting' THEN 1 
-        WHEN 'confirmed' THEN 2 
+        WHEN 'confirmed' THEN 2
+        WHEN 'rejected' THEN 3
+        WHEN 'expired' THEN 4
+        WHEN 'removed' THEN 5
       END,
       joined_at ASC
   `).all(courseId);
@@ -250,7 +253,7 @@ router.post('/:id/leave', auth, requireRole('student'), (req, res) => {
     return res.status(400).json({ message: '当前状态无法退出候补' });
   }
   
-  db.prepare("UPDATE waitlists SET status = 'removed', removed_by = ?, removed_reason = '主动退出' WHERE id = ?").run(userId, id);
+  db.prepare("UPDATE waitlists SET status = 'removed', removed_by = ?, removed_reason = '主动退出', removed_at = datetime('now', 'localtime') WHERE id = ?").run(userId, id);
   addWaitlistLog(id, waitlist.course_id, userId, 'left', userId, { reason: '主动退出' });
   
   if (waitlist.status === 'notified') {
@@ -375,7 +378,7 @@ router.delete('/:id/admin-remove', auth, requireRole('admin', 'assistant'), (req
   const wasNotified = waitlist.status === 'notified';
   
   db.prepare(`
-    UPDATE waitlists SET status = 'removed', removed_by = ?, removed_reason = ? WHERE id = ?
+    UPDATE waitlists SET status = 'removed', removed_by = ?, removed_reason = ?, removed_at = datetime('now', 'localtime') WHERE id = ?
   `).run(req.user.id, reason || '管理员移除', id);
   
   addWaitlistLog(id, waitlist.course_id, waitlist.user_id, 'admin_removed', req.user.id, { reason: reason || '管理员移除' });

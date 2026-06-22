@@ -251,10 +251,13 @@
             <div class="card-header-bar">
               <el-icon :size="18"><Connection /></el-icon>
               <span>候补队列管理</span>
-              <div style="display: flex; gap: 8px;">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <el-tag size="small" type="info" v-if="waitlistStats?.waiting">候补 {{ waitlistStats.waiting }} 人</el-tag>
                 <el-tag size="small" type="warning" v-if="waitlistStats?.in_fill">补位中 {{ waitlistStats.in_fill }} 人</el-tag>
                 <el-tag size="small" type="success" v-if="waitlistStats?.confirmed">已补位 {{ waitlistStats.confirmed }} 人</el-tag>
+                <el-tag size="small" type="info" effect="plain" v-if="waitlistStats?.rejected">已拒绝 {{ waitlistStats.rejected }} 人</el-tag>
+                <el-tag size="small" type="warning" effect="plain" v-if="waitlistStats?.expired">已超时 {{ waitlistStats.expired }} 人</el-tag>
+                <el-tag size="small" type="danger" effect="plain" v-if="waitlistStats?.removed">已移除 {{ waitlistStats.removed }} 人</el-tag>
                 <el-button size="small" :icon="Refresh" @click="loadWaitlistData">刷新</el-button>
               </div>
             </div>
@@ -268,8 +271,20 @@
                 <template v-else-if="row.status === 'notified'">
                   <el-tag type="warning" effect="dark" round size="small">补位中</el-tag>
                 </template>
-                <template v-else>
+                <template v-else-if="row.status === 'confirmed'">
                   <el-tag type="success" effect="dark" round size="small">已补位</el-tag>
+                </template>
+                <template v-else-if="row.status === 'rejected'">
+                  <el-tag type="info" effect="plain" round size="small">已拒绝</el-tag>
+                </template>
+                <template v-else-if="row.status === 'expired'">
+                  <el-tag type="warning" effect="plain" round size="small">已超时</el-tag>
+                </template>
+                <template v-else-if="row.status === 'removed'">
+                  <el-tag type="danger" effect="plain" round size="small">已移除</el-tag>
+                </template>
+                <template v-else>
+                  <el-tag type="info" effect="plain" round size="small">-</el-tag>
                 </template>
               </template>
             </el-table-column>
@@ -285,20 +300,42 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="补位通知" width="160" v-if="row => row.status === 'notified'">
+            <el-table-column label="补位通知" width="160">
               <template #default="{ row }">
-                <div v-if="row.notified_at" style="font-size: 12px;">
+                <div v-if="row.status === 'notified' && row.notified_at" style="font-size: 12px;">
                   <div style="color: #606266;">通知: {{ formatDateTime(row.notified_at) }}</div>
                   <div style="color: #E6A23C;">截止: {{ formatDateTime(row.expires_at) }}</div>
                 </div>
                 <span v-else style="color: #c0c4cc;">-</span>
               </template>
             </el-table-column>
+            <el-table-column label="处理时间" width="170">
+              <template #default="{ row }">
+                <span v-if="row.status === 'confirmed'">{{ formatDateTime(row.confirmed_at) }}</span>
+                <span v-else-if="row.status === 'rejected'">{{ formatDateTime(row.rejected_at) }}</span>
+                <span v-else-if="row.status === 'expired'">{{ formatDateTime(row.rejected_at || row.expires_at) }}</span>
+                <span v-else-if="row.status === 'removed'">{{ formatDateTime(row.removed_at) }}</span>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="说明" min-width="140">
+              <template #default="{ row }">
+                <span v-if="row.status === 'confirmed'" style="color: #67C23A;">已成功补位</span>
+                <span v-else-if="row.status === 'expired'" style="color: #E6A23C;">确认超时</span>
+                <span v-else-if="row.status === 'rejected'" style="color: #909399;">学员拒绝补位</span>
+                <span v-else-if="row.status === 'removed'" style="color: #F56C6C;">{{ row.removed_reason || '已移除' }}</span>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="130" align="center">
               <template #default="{ row }">
-                <el-button type="danger" link size="small" @click="openRemoveDialog(row)">
+                <el-button
+                  v-if="['waiting', 'notified'].includes(row.status)"
+                  type="danger" link size="small" @click="openRemoveDialog(row)"
+                >
                   移除
                 </el-button>
+                <span v-else style="color: #c0c4cc;">-</span>
               </template>
             </el-table-column>
           </el-table>

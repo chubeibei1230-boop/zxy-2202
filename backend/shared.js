@@ -29,8 +29,11 @@ function getWaitlistStats(courseId) {
   const waiting = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'waiting'").get(courseId).count;
   const notified = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'notified'").get(courseId).count;
   const confirmed = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'confirmed'").get(courseId).count;
+  const rejected = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'rejected'").get(courseId).count;
+  const expired = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'expired'").get(courseId).count;
+  const removed = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status = 'removed'").get(courseId).count;
   const total = db.prepare("SELECT COUNT(*) as count FROM waitlists WHERE course_id = ? AND status IN ('waiting', 'notified')").get(courseId).count;
-  return { waiting, notified, confirmed, total, in_fill: notified };
+  return { waiting, notified, confirmed, rejected, expired, removed, total, in_fill: notified };
 }
 
 module.exports = {

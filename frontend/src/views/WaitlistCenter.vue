@@ -186,7 +186,11 @@
           </el-table-column>
           <el-table-column label="结束时间" width="170">
             <template #default="{ row }">
-              {{ formatDateTime(row.confirmed_at || row.rejected_at || row.expires_at || row.removed_reason ? row.joined_at : '') }}
+              <span v-if="row.status === 'confirmed'">{{ formatDateTime(row.confirmed_at) }}</span>
+              <span v-else-if="row.status === 'rejected'">{{ formatDateTime(row.rejected_at) }}</span>
+              <span v-else-if="row.status === 'expired'">{{ formatDateTime(row.rejected_at || row.expires_at) }}</span>
+              <span v-else-if="row.status === 'removed'">{{ formatDateTime(row.removed_at) }}</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column label="说明" min-width="150">
