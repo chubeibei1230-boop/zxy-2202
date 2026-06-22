@@ -47,6 +47,13 @@ export const STATUS_OPTIONS = Object.entries(STATUS_MAP).map(([key, val]) => ({
 
 export const RATING_OPTIONS = [1, 2, 3, 4, 5]
 
+export const BOOKING_STATUS_MAP = {
+  booked: { label: '已预约', type: 'success' },
+  attended: { label: '已到场', type: 'primary' },
+  no_show: { label: '未到场', type: 'danger' },
+  cancelled: { label: '已取消', type: 'info' }
+}
+
 export const ATTENDANCE_STATUS = {
   present: { label: '到场', type: 'success' },
   absent: { label: '缺席', type: 'danger' },

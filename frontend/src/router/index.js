@@ -20,6 +20,12 @@ const routes = [
         meta: { requiresAuth: true, title: '首页仪表盘' }
       },
       {
+        path: 'my-bookings',
+        name: 'MyBookings',
+        component: () => import('@/views/MyBookings.vue'),
+        meta: { requiresAuth: true, title: '我的预约' }
+      },
+      {
         path: 'courses',
         name: 'Courses',
         component: () => import('@/views/Courses.vue'),

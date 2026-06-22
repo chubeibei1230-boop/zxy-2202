@@ -6,6 +6,7 @@ export const useCourseStore = defineStore('course', {
     courses: [],
     currentCourse: null,
     loading: false,
+    myBookings: [],
     myWaitlists: [],
     courseWaitlist: [],
     waitlistStats: null,
@@ -52,6 +53,11 @@ export const useCourseStore = defineStore('course', {
     },
     async deleteCourse(id) {
       return await request.delete(`/courses/${id}`)
+    },
+    async fetchMyBookings() {
+      const data = await request.get('/bookings')
+      this.myBookings = data.bookings || []
+      return this.myBookings
     },
     async bookCourse(courseId) {
       return await request.post(`/bookings`, { course_id: courseId })

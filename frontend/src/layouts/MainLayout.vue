@@ -17,6 +17,10 @@
           <el-icon><DataBoard /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
+        <el-menu-item index="/my-bookings">
+          <el-icon><Tickets /></el-icon>
+          <span>我的预约</span>
+        </el-menu-item>
         <el-menu-item index="/courses">
           <el-icon><Collection /></el-icon>
           <span>课程列表</span>
@@ -85,7 +89,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { ROLE_MAP } from '@/constants'
-import { UserFilled } from '@element-plus/icons-vue'
+import { UserFilled, Tickets } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
