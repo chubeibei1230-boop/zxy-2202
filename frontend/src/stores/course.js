@@ -10,7 +10,8 @@ export const useCourseStore = defineStore('course', {
     myWaitlists: [],
     courseWaitlist: [],
     waitlistStats: null,
-    waitlistLogs: []
+    waitlistLogs: [],
+    waitlistSummary: null
   }),
   actions: {
     async fetchCourses(params = {}) {
@@ -99,6 +100,11 @@ export const useCourseStore = defineStore('course', {
       const data = await request.get(`/waitlists/course/${courseId}/logs`)
       this.waitlistLogs = data.logs || []
       return this.waitlistLogs
+    },
+    async fetchWaitlistSummary() {
+      const data = await request.get('/waitlists/stats/summary')
+      this.waitlistSummary = data
+      return data
     }
   }
 })

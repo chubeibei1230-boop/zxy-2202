@@ -26,6 +26,12 @@ const routes = [
         meta: { requiresAuth: true, title: '我的预约' }
       },
       {
+        path: 'waitlist-center',
+        name: 'WaitlistCenter',
+        component: () => import('@/views/WaitlistCenter.vue'),
+        meta: { requiresAuth: true, roles: ['student'], title: '候补通知中心' }
+      },
+      {
         path: 'courses',
         name: 'Courses',
         component: () => import('@/views/Courses.vue'),

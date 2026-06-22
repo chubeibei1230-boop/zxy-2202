@@ -143,7 +143,7 @@ router.get('/course/:courseId', auth, (req, res) => {
   const result = rows.map((w, idx) => {
     const enriched = enrichWaitlist(w);
     enriched.display_rank = w.status === 'waiting' ? 
-      db.prepare("SELECT COUNT(*) as c FROM waitlists WHERE course_id = ? AND status = 'waiting' AND joined_at < ?", courseId, w.joined_at).get().c + 1 : null;
+      db.prepare("SELECT COUNT(*) as c FROM waitlists WHERE course_id = ? AND status = 'waiting' AND joined_at < ?").get(courseId, w.joined_at).c + 1 : null;
     return enriched;
   });
   
@@ -400,6 +400,69 @@ router.get('/course/:courseId/logs', auth, requireRole('admin', 'assistant'), (r
   `).all(courseId);
   
   res.json({ logs: rows });
+});
+
+router.get('/stats/summary', auth, (req, res) => {
+  expireOldNotifications(null);
+  const userId = req.user.id;
+  const role = req.user.role;
+  
+  if (role === 'student') {
+    const waiting = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE user_id = ? AND status = 'waiting'"
+    ).get(userId).count;
+    const notified = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE user_id = ? AND status = 'notified'"
+    ).get(userId).count;
+    const confirmed = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE user_id = ? AND status = 'confirmed'"
+    ).get(userId).count;
+    
+    const notifiedItems = db.prepare(`
+      SELECT w.*, c.title as course_title, c.start_time, c.end_time, c.instructor
+      FROM waitlists w
+      LEFT JOIN courses c ON w.course_id = c.id
+      WHERE w.user_id = ? AND w.status = 'notified'
+      ORDER BY w.expires_at ASC
+    `).all(userId);
+    
+    res.json({
+      waiting,
+      notified,
+      confirmed,
+      total: waiting + notified,
+      pending_notifications: notifiedItems
+    });
+  } else {
+    const totalWaiting = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE status = 'waiting'"
+    ).get().count;
+    const totalNotified = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE status = 'notified'"
+    ).get().count;
+    const totalConfirmed = db.prepare(
+      "SELECT COUNT(*) as count FROM waitlists WHERE status = 'confirmed'"
+    ).get().count;
+    
+    const coursesWithWaitlist = db.prepare(`
+      SELECT c.id, c.title, c.status, c.capacity,
+        (SELECT COUNT(*) FROM waitlists w WHERE w.course_id = c.id AND w.status = 'waiting') as waiting_count,
+        (SELECT COUNT(*) FROM waitlists w WHERE w.course_id = c.id AND w.status = 'notified') as notified_count,
+        (SELECT COUNT(*) FROM bookings b WHERE b.course_id = c.id AND b.status != 'cancelled') as booked_count
+      FROM courses c
+      WHERE c.id IN (SELECT DISTINCT course_id FROM waitlists WHERE status IN ('waiting', 'notified'))
+      ORDER BY waiting_count DESC
+      LIMIT 10
+    `).all();
+    
+    res.json({
+      total_waiting: totalWaiting,
+      total_notified: totalNotified,
+      total_confirmed: totalConfirmed,
+      total_active: totalWaiting + totalNotified,
+      courses_with_waitlist: coursesWithWaitlist
+    });
+  }
 });
 
 module.exports = { router, processWaitlistFill, getWaitlistStats, WAITLIST_CONFIRM_TIMEOUT_MINUTES };

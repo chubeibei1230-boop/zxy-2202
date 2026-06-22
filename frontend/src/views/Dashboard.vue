@@ -94,15 +94,19 @@ import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { useStatsStore } from '@/stores/stats'
+import { useCourseStore } from '@/stores/course'
+import { useUserStore } from '@/stores/user'
 import { getLastNDays } from '@/utils'
 import {
   DataBoard, Calendar, UserFilled, Star, CaretTop, CaretBottom,
   TrendCharts, DataLine, PieChart, Warning, Bell,
-  WarningFilled, CircleClose, Grid, Edit
+  WarningFilled, CircleClose, Grid, Edit, Connection, Clock
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const statsStore = useStatsStore()
+const courseStore = useCourseStore()
+const userStore = useUserStore()
 
 const trendChartRef = ref(null)
 const attendanceChartRef = ref(null)
@@ -112,6 +116,7 @@ let attendanceChart = null
 let ratingChart = null
 
 const dashboard = computed(() => statsStore.dashboard)
+const waitlistSummary = computed(() => courseStore.waitlistSummary)
 
 const statCards = computed(() => [
   {
@@ -145,42 +150,93 @@ const statCards = computed(() => [
 ])
 
 const todoList = computed(() => {
-  const todos = dashboard.value.todos || []
-  if (todos.length > 0) return todos
-  return [
-    {
-      type: 'low_attendance',
-      typeLabel: '低到场率',
-      tagType: 'danger',
-      icon: WarningFilled,
-      title: '到场率不足 60%，请关注并联系学员确认',
-      course: '瑜伽入门班（第3期）'
-    },
-    {
-      type: 'missing_feedback',
-      typeLabel: '反馈缺失',
-      tagType: 'warning',
-      icon: Bell,
-      title: '课程已结课3天，仍有5位学员未填写反馈',
-      course: '摄影技巧进阶班'
-    },
-    {
-      type: 'capacity_full',
-      typeLabel: '容量不足',
-      tagType: 'danger',
-      icon: CircleClose,
-      title: '预约请求过多，建议增加课程容量或新开班次',
-      course: '少儿绘画启蒙班'
-    },
-    {
-      type: 'no_summary',
-      typeLabel: '未填结课摘要',
-      tagType: 'warning',
-      icon: Edit,
-      title: '课程已结束，请及时填写结课摘要',
-      course: '书法基础班（第2期）'
+  const todos = []
+  
+  if (userStore.isStudent) {
+    const notified = waitlistSummary.value?.pending_notifications || []
+    for (const item of notified) {
+      todos.push({
+        type: 'waitlist_notified',
+        typeLabel: '补位待确认',
+        tagType: 'warning',
+        icon: WarningFilled,
+        title: `「${item.course_title}」有补位名额待确认，请尽快处理`,
+        course: item.course_title,
+        courseId: item.course_id,
+        waitlistId: item.id,
+        priority: 'high'
+      })
     }
-  ]
+    
+    const waitingCount = waitlistSummary.value?.waiting || 0
+    if (waitingCount > 0) {
+      todos.push({
+        type: 'waitlist_waiting',
+        typeLabel: '候补中',
+        tagType: 'info',
+        icon: Clock,
+        title: `您有 ${waitingCount} 门课程正在候补队列中`,
+        course: '-',
+        priority: 'normal'
+      })
+    }
+  } else {
+    const coursesWithWaitlist = waitlistSummary.value?.courses_with_waitlist || []
+    for (const c of coursesWithWaitlist.slice(0, 3)) {
+      todos.push({
+        type: 'course_waitlist',
+        typeLabel: '候补队列',
+        tagType: 'info',
+        icon: Connection,
+        title: `「${c.title}」有 ${c.waiting_count} 人候补、${c.notified_count} 人补位中`,
+        course: c.title,
+        courseId: c.id,
+        priority: c.waiting_count > 5 ? 'high' : 'normal'
+      })
+    }
+    
+    const totalWaiting = waitlistSummary.value?.total_waiting || 0
+    if (totalWaiting > 0) {
+      todos.push({
+        type: 'waitlist_overview',
+        typeLabel: '候补总览',
+        tagType: 'info',
+        icon: Grid,
+        title: `系统共有 ${totalWaiting} 人在候补队列中`,
+        course: '全部课程',
+        priority: 'normal'
+      })
+    }
+  }
+  
+  const systemTodos = dashboard.value.todos || []
+  if (systemTodos.length > 0) {
+    todos.push(...systemTodos)
+  }
+  
+  if (todos.length === 0) {
+    if (userStore.isStudent) {
+      todos.push({
+        type: 'no_waitlist',
+        typeLabel: '暂无候补',
+        tagType: 'info',
+        icon: Bell,
+        title: '您目前没有候补中的课程，快去看看感兴趣的课程吧',
+        course: '-'
+      })
+    } else {
+      todos.push({
+        type: 'no_waitlist',
+        typeLabel: '暂无候补',
+        tagType: 'info',
+        icon: Bell,
+        title: '当前没有课程有候补队列',
+        course: '-'
+      })
+    }
+  }
+  
+  return todos
 })
 
 function initTrendChart() {
@@ -349,7 +405,17 @@ function initRatingChart() {
 }
 
 function handleTodo(row) {
-  router.push('/courses')
+  if (row.type === 'waitlist_notified') {
+    router.push('/waitlist-center')
+  } else if (row.type === 'waitlist_waiting') {
+    router.push('/waitlist-center')
+  } else if (row.type === 'course_waitlist' && row.courseId) {
+    router.push(`/courses/${row.courseId}`)
+  } else if (row.type === 'waitlist_overview') {
+    router.push('/courses')
+  } else {
+    router.push('/courses')
+  }
 }
 
 function handleResize() {
@@ -358,8 +424,15 @@ function handleResize() {
   ratingChart?.resize()
 }
 
+async function loadWaitlistSummary() {
+  try {
+    await courseStore.fetchWaitlistSummary()
+  } catch (e) {}
+}
+
 onMounted(async () => {
   await statsStore.fetchDashboard()
+  await loadWaitlistSummary()
   await nextTick()
   initTrendChart()
   initAttendanceChart()

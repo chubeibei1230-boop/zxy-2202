@@ -21,6 +21,12 @@
           <el-icon><Tickets /></el-icon>
           <span>我的预约</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.isStudent" index="/waitlist-center">
+          <el-badge :value="waitlistBadgeCount" :hidden="waitlistBadgeCount <= 0" class="menu-badge">
+            <el-icon><Bell /></el-icon>
+          </el-badge>
+          <span>候补通知</span>
+        </el-menu-item>
         <el-menu-item index="/courses">
           <el-icon><Collection /></el-icon>
           <span>课程列表</span>
@@ -84,19 +90,55 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useCourseStore } from '@/stores/course'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { ROLE_MAP } from '@/constants'
-import { UserFilled, Tickets } from '@element-plus/icons-vue'
+import { UserFilled, Tickets, Bell } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const courseStore = useCourseStore()
 
 const activeMenu = computed(() => route.path)
 const showOnSite = computed(() => userStore.isAssistant || userStore.isAdmin)
+
+const waitlistBadgeCount = computed(() => {
+  if (!userStore.isStudent) return 0
+  return courseStore.waitlistSummary?.notified || 0
+})
+
+let refreshTimer = null
+
+async function loadWaitlistSummary() {
+  if (!userStore.isLoggedIn || !userStore.isStudent) return
+  try {
+    await courseStore.fetchWaitlistSummary()
+  } catch (e) {}
+}
+
+watch(() => userStore.isLoggedIn, (val) => {
+  if (val) {
+    loadWaitlistSummary()
+  }
+})
+
+onMounted(() => {
+  if (userStore.isStudent) {
+    loadWaitlistSummary()
+    refreshTimer = setInterval(loadWaitlistSummary, 30000)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+})
 
 const roleLabel = computed(() => {
   const role = userStore.role
@@ -219,5 +261,14 @@ function handleCommand(cmd) {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.menu-badge {
+  margin-right: 4px;
+}
+
+.sidebar-menu :deep(.el-badge__content) {
+  top: 4px;
+  right: 2px;
 }
 </style>

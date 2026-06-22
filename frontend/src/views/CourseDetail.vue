@@ -294,18 +294,11 @@
                 <span v-else style="color: #c0c4cc;">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="110" align="center">
+            <el-table-column label="操作" width="130" align="center">
               <template #default="{ row }">
-                <el-popconfirm
-                  title="确定移除该候补记录吗？"
-                  confirm-button-text="移除"
-                  cancel-button-text="取消"
-                  @confirm="handleAdminRemove(row)"
-                >
-                  <template #reference>
-                    <el-button type="danger" link size="small">移除</el-button>
-                  </template>
-                </el-popconfirm>
+                <el-button type="danger" link size="small" @click="openRemoveDialog(row)">
+                  移除
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -504,6 +497,65 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-dialog
+      v-model="removeDialogVisible"
+      title="移除候补记录"
+      width="480px"
+      :close-on-click-modal="false"
+    >
+      <div class="remove-dialog-content">
+        <el-alert
+          title="确定要移除该候补学员吗？"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+        <div class="student-info">
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="学员姓名">
+              {{ removingWaitlist?.user?.name || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="联系方式">
+              {{ removingWaitlist?.user?.phone || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="当前状态">
+              <el-tag :type="WAITLIST_STATUS_MAP[removingWaitlist?.status]?.type || 'info'" size="small" round>
+                {{ WAITLIST_STATUS_MAP[removingWaitlist?.status]?.label || '-' }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+        <el-form label-position="top" style="margin-top: 16px;">
+          <el-form-item label="移除原因">
+            <el-radio-group v-model="selectedReason" @change="selectReason">
+              <el-radio
+                v-for="reason in removeReasons"
+                :key="reason"
+                :value="reason"
+              >
+                {{ reason }}
+              </el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="详细说明">
+            <el-input
+              v-model="customReason"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入详细原因说明..."
+              maxlength="200"
+              show-word-limit
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="removeDialogVisible = false">取消</el-button>
+        <el-button type="danger" @click="handleAdminRemove">确认移除</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -726,10 +778,39 @@ async function handleRejectWaitlist() {
   }).catch(() => {})
 }
 
-async function handleAdminRemove(row) {
+const removeDialogVisible = ref(false)
+const removingWaitlist = ref(null)
+const selectedReason = ref('')
+const customReason = ref('')
+const removeReasons = [
+  '不符合课程报名条件',
+  '重复候补',
+  '课程要求变更',
+  '学员主动申请',
+  '其他原因'
+]
+
+function openRemoveDialog(row) {
+  removingWaitlist.value = row
+  selectedReason.value = ''
+  customReason.value = ''
+  removeDialogVisible.value = true
+}
+
+function selectReason(reason) {
+  selectedReason.value = reason
+  if (reason && reason !== '其他原因') {
+    customReason.value = reason
+  }
+}
+
+async function handleAdminRemove() {
+  if (!removingWaitlist.value) return
+  const reason = customReason.value || selectedReason.value || '管理员移除'
   try {
-    await courseStore.adminRemoveWaitlist(row.id, '管理员移除')
+    await courseStore.adminRemoveWaitlist(removingWaitlist.value.id, reason)
     ElMessage.success('已移除候补记录')
+    removeDialogVisible.value = false
     await loadWaitlistData()
   } catch (e) {}
 }
