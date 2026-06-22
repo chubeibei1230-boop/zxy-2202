@@ -70,6 +70,39 @@ function initTables() {
       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
       FOREIGN KEY (assistant_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS waitlists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      course_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'notified', 'confirmed', 'rejected', 'expired', 'removed')),
+      joined_at TEXT DEFAULT (datetime('now', 'localtime')),
+      notified_at TEXT,
+      confirmed_at TEXT,
+      rejected_at TEXT,
+      expires_at TEXT,
+      removed_by INTEGER,
+      removed_reason TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+      FOREIGN KEY (removed_by) REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE(user_id, course_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS waitlist_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      waitlist_id INTEGER NOT NULL,
+      course_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      action_by INTEGER,
+      details TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (waitlist_id) REFERENCES waitlists(id) ON DELETE CASCADE,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (action_by) REFERENCES users(id) ON DELETE SET NULL
+    );
   `);
 }
 

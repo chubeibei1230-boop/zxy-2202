@@ -5,7 +5,11 @@ export const useCourseStore = defineStore('course', {
   state: () => ({
     courses: [],
     currentCourse: null,
-    loading: false
+    loading: false,
+    myWaitlists: [],
+    courseWaitlist: [],
+    waitlistStats: null,
+    waitlistLogs: []
   }),
   actions: {
     async fetchCourses(params = {}) {
@@ -54,6 +58,41 @@ export const useCourseStore = defineStore('course', {
     },
     async cancelBooking(bookingId) {
       return await request.delete(`/bookings/${bookingId}`)
+    },
+    async joinWaitlist(courseId) {
+      return await request.post(`/waitlists/course/${courseId}/join`)
+    },
+    async leaveWaitlist(waitlistId) {
+      return await request.post(`/waitlists/${waitlistId}/leave`)
+    },
+    async confirmWaitlist(waitlistId) {
+      return await request.post(`/waitlists/${waitlistId}/confirm`)
+    },
+    async rejectWaitlist(waitlistId) {
+      return await request.post(`/waitlists/${waitlistId}/reject`)
+    },
+    async fetchMyWaitlists() {
+      const data = await request.get('/waitlists/my')
+      this.myWaitlists = data.waitlists || []
+      return this.myWaitlists
+    },
+    async fetchCourseWaitlist(courseId) {
+      const data = await request.get(`/waitlists/course/${courseId}`)
+      this.courseWaitlist = data.waitlists || []
+      this.waitlistStats = data.stats || null
+      return data
+    },
+    async fetchMyWaitlistStatus(courseId) {
+      const data = await request.get(`/waitlists/course/${courseId}/my-status`)
+      return data
+    },
+    async adminRemoveWaitlist(waitlistId, reason) {
+      return await request.delete(`/waitlists/${waitlistId}/admin-remove`, { data: { reason } })
+    },
+    async fetchWaitlistLogs(courseId) {
+      const data = await request.get(`/waitlists/course/${courseId}/logs`)
+      this.waitlistLogs = data.logs || []
+      return this.waitlistLogs
     }
   }
 })

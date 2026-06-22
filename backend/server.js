@@ -6,11 +6,13 @@ const bodyParser = require('body-parser');
 
 const { initDB } = require('./db');
 const authRoutes = require('./routes/auth');
-const { router: courseRoutes } = require('./routes/courses');
+const { router: courseRoutes, setProcessWaitlistFill: setCourseProcessFill } = require('./routes/courses');
 const bookingRoutes = require('./routes/bookings');
+const { setProcessWaitlistFill: setBookingProcessFill } = bookingRoutes;
 const feedbackRoutes = require('./routes/feedbacks');
 const summaryRoutes = require('./routes/course-summaries');
 const statsRoutes = require('./routes/stats');
+const { router: waitlistRoutes, processWaitlistFill } = require('./routes/waitlists');
 
 const app = express();
 const PORT = process.env.PORT || 8161;
@@ -31,6 +33,10 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
 app.use('/api/course-summaries', summaryRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/waitlists', waitlistRoutes);
+
+setCourseProcessFill(processWaitlistFill);
+setBookingProcessFill(processWaitlistFill);
 
 app.use((err, req, res, next) => {
   console.error(err);

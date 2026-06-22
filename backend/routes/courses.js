@@ -1,33 +1,20 @@
 const express = require('express');
 const { db } = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
+const { parseCourse, getBookedCount, updateCourseStatus, getWaitlistStats } = require('../shared');
+
+let _processWaitlistFill = null;
+function processWaitlistFill(courseId) {
+  if (_processWaitlistFill) return _processWaitlistFill(courseId);
+}
 
 const router = express.Router();
 
-function parseCourse(row) {
-  if (!row) return row;
-  return {
-    ...row,
-    feedback_template: row.feedback_template ? JSON.parse(row.feedback_template) : []
-  };
+function setProcessWaitlistFill(fn) {
+  _processWaitlistFill = fn;
 }
 
-function getBookedCount(courseId) {
-  return db.prepare(
-    "SELECT COUNT(*) as count FROM bookings WHERE course_id = ? AND status != 'cancelled'"
-  ).get(courseId).count;
-}
 
-function updateCourseStatus(courseId) {
-  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
-  if (!course) return;
-  const booked = getBookedCount(courseId);
-  if (course.status === 'bookable' && booked >= course.capacity) {
-    db.prepare("UPDATE courses SET status = 'full' WHERE id = ?").run(courseId);
-  } else if (course.status === 'full' && booked < course.capacity) {
-    db.prepare("UPDATE courses SET status = 'bookable' WHERE id = ?").run(courseId);
-  }
-}
 
 router.get('/', auth, (req, res) => {
   const { status, instructor, keyword, start_date, end_date, statuses } = req.query;
@@ -63,10 +50,41 @@ router.get('/', auth, (req, res) => {
   }
   sql += ' ORDER BY start_time DESC';
 
-  const rows = db.prepare(sql).all(...params).map(parseCourse).map(c => ({
-    ...c,
-    booked_count: getBookedCount(c.id)
-  }));
+  const userId = req.user.id;
+  const rows = db.prepare(sql).all(...params).map(parseCourse).map(c => {
+    const bookedCount = getBookedCount(c.id);
+    const waitlistStats = getWaitlistStats(c.id);
+    
+    let userBookingId = null;
+    if (req.user.role === 'student') {
+      const b = db.prepare(
+        "SELECT id FROM bookings WHERE user_id = ? AND course_id = ? AND status != 'cancelled'"
+      ).get(userId, c.id);
+      if (b) userBookingId = b.id;
+    }
+    
+    let userWaitlistId = null;
+    let userWaitlistStatus = null;
+    if (req.user.role === 'student') {
+      const w = db.prepare(
+        "SELECT id, status FROM waitlists WHERE user_id = ? AND course_id = ? AND status IN ('waiting', 'notified')"
+      ).get(userId, c.id);
+      if (w) {
+        userWaitlistId = w.id;
+        userWaitlistStatus = w.status;
+      }
+    }
+    
+    return {
+      ...c,
+      booked_count: bookedCount,
+      waitlist_count: waitlistStats.total,
+      waitlist_in_fill: waitlistStats.in_fill,
+      user_booking_id: userBookingId,
+      user_waitlist_id: userWaitlistId,
+      user_waitlist_status: userWaitlistStatus
+    };
+  });
   res.json({ courses: rows });
 });
 
@@ -76,6 +94,38 @@ router.get('/:id', auth, (req, res) => {
     return res.status(404).json({ message: '课程不存在' });
   }
   course.booked_count = getBookedCount(course.id);
+  const waitlistStats = getWaitlistStats(course.id);
+  course.waitlist_count = waitlistStats.total;
+  course.waitlist_waiting = waitlistStats.waiting;
+  course.waitlist_in_fill = waitlistStats.in_fill;
+  course.waitlist_confirmed = waitlistStats.confirmed;
+  
+  const userId = req.user.id;
+  if (req.user.role === 'student') {
+    const b = db.prepare(
+      "SELECT id FROM bookings WHERE user_id = ? AND course_id = ? AND status != 'cancelled'"
+    ).get(userId, course.id);
+    course.user_booking_id = b ? b.id : null;
+    
+    const w = db.prepare(
+      "SELECT id, status, joined_at FROM waitlists WHERE user_id = ? AND course_id = ? AND status IN ('waiting', 'notified')"
+    ).get(userId, course.id);
+    course.user_waitlist = w ? {
+      id: w.id,
+      status: w.status,
+      joined_at: w.joined_at
+    } : null;
+  }
+  
+  const fbStats = db.prepare(`
+    SELECT 
+      COUNT(*) as feedback_count,
+      AVG(rating) as avg_rating
+    FROM feedbacks WHERE course_id = ?
+  `).get(course.id);
+  course.feedback_count = fbStats.feedback_count || 0;
+  course.avg_rating = fbStats.avg_rating ? Math.round(fbStats.avg_rating * 10) / 10 : null;
+  
   res.json({ course });
 });
 
@@ -112,13 +162,16 @@ router.put('/:id', auth, requireRole('admin'), (req, res) => {
 
   const { title, instructor, capacity, start_time, end_time, classroom_area, feedback_template, status } = req.body;
 
+  const newCapacity = capacity !== undefined ? capacity : existing.capacity;
+  const capacityIncreased = newCapacity > existing.capacity;
+
   db.prepare(
     `UPDATE courses SET title = ?, instructor = ?, capacity = ?, start_time = ?, end_time = ?, 
      classroom_area = ?, feedback_template = ?, status = ? WHERE id = ?`
   ).run(
     title || existing.title,
     instructor || existing.instructor,
-    capacity !== undefined ? capacity : existing.capacity,
+    newCapacity,
     start_time || existing.start_time,
     end_time || existing.end_time,
     classroom_area !== undefined ? classroom_area : existing.classroom_area,
@@ -128,7 +181,18 @@ router.put('/:id', auth, requireRole('admin'), (req, res) => {
   );
 
   updateCourseStatus(req.params.id);
+  
+  if (capacityIncreased) {
+    processWaitlistFill(req.params.id);
+  }
+  
   const course = parseCourse(db.prepare('SELECT * FROM courses WHERE id = ?').get(req.params.id));
+  course.booked_count = getBookedCount(course.id);
+  const waitlistStats = getWaitlistStats(course.id);
+  course.waitlist_count = waitlistStats.total;
+  course.waitlist_waiting = waitlistStats.waiting;
+  course.waitlist_in_fill = waitlistStats.in_fill;
+  
   res.json({ course });
 });
 
@@ -159,4 +223,4 @@ router.delete('/:id', auth, requireRole('admin'), (req, res) => {
   res.json({ message: '删除成功' });
 });
 
-module.exports = { router, updateCourseStatus, getBookedCount, parseCourse };
+module.exports = { router, setProcessWaitlistFill };

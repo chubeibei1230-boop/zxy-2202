@@ -8,6 +8,25 @@ export const STATUS_MAP = {
   suspended: { label: '暂停开放', type: 'danger' }
 }
 
+export const WAITLIST_STATUS_MAP = {
+  waiting: { label: '候补中', type: 'info' },
+  notified: { label: '补位待确认', type: 'warning' },
+  confirmed: { label: '已确认补位', type: 'success' },
+  rejected: { label: '已拒绝补位', type: 'info' },
+  expired: { label: '确认超时', type: 'danger' },
+  removed: { label: '已移除', type: 'info' }
+}
+
+export const WAITLIST_ACTION_MAP = {
+  joined: { label: '加入候补', type: 'primary' },
+  left: { label: '退出候补', type: 'info' },
+  notified: { label: '收到补位通知', type: 'warning' },
+  confirmed: { label: '确认补位', type: 'success' },
+  rejected: { label: '拒绝补位', type: 'info' },
+  expired: { label: '补位超时', type: 'danger' },
+  admin_removed: { label: '管理员移除', type: 'danger' }
+}
+
 export const ROLE_MAP = {
   student: { label: '学员', value: 'student' },
   assistant: { label: '助教', value: 'assistant' },
@@ -33,3 +52,5 @@ export const ATTENDANCE_STATUS = {
   absent: { label: '缺席', type: 'danger' },
   pending: { label: '待确认', type: 'info' }
 }
+
+export const WAITLIST_CONFIRM_TIMEOUT_MINUTES = 30

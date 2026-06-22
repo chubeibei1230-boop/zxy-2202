@@ -1,7 +1,18 @@
 const express = require('express');
 const { db } = require('../db');
 const { auth, requireRole } = require('../middleware/auth');
-const { updateCourseStatus } = require('./courses');
+const { updateCourseStatus } = require('../shared');
+
+let _processWaitlistFill = null;
+function processWaitlistFill(courseId) {
+  if (_processWaitlistFill) return _processWaitlistFill(courseId);
+}
+
+function setProcessWaitlistFill(fn) {
+  _processWaitlistFill = fn;
+}
+
+
 
 const router = express.Router();
 
@@ -43,12 +54,26 @@ router.post('/', auth, requireRole('student'), (req, res) => {
   }
 
   try {
-    const info = db.prepare(
-      "INSERT INTO bookings (user_id, course_id, status) VALUES (?, ?, 'booked')"
-    ).run(req.user.id, course_id);
+    let bookingId;
+    const cancelledBooking = db.prepare(
+      "SELECT * FROM bookings WHERE user_id = ? AND course_id = ? AND status = 'cancelled'"
+    ).get(req.user.id, course_id);
+    
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (cancelledBooking) {
+      db.prepare(
+        "UPDATE bookings SET status = 'booked', booked_at = ?, cancelled_at = NULL WHERE id = ?"
+      ).run(now, cancelledBooking.id);
+      bookingId = cancelledBooking.id;
+    } else {
+      const info = db.prepare(
+        "INSERT INTO bookings (user_id, course_id, status, booked_at) VALUES (?, ?, 'booked', ?)"
+      ).run(req.user.id, course_id, now);
+      bookingId = info.lastInsertRowid;
+    }
 
     updateCourseStatus(course_id);
-    const booking = enrichBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(info.lastInsertRowid));
+    const booking = enrichBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(bookingId));
     res.status(201).json({ booking });
   } catch (err) {
     if (err.message.includes('UNIQUE')) {
@@ -75,6 +100,7 @@ router.delete('/:id', auth, requireRole('student'), (req, res) => {
   ).run(req.params.id);
 
   updateCourseStatus(booking.course_id);
+  processWaitlistFill(booking.course_id);
   res.json({ message: '取消成功' });
 });
 
@@ -170,3 +196,4 @@ router.post('/batch-attendance', auth, requireRole('assistant', 'admin'), (req, 
 });
 
 module.exports = router;
+module.exports.setProcessWaitlistFill = setProcessWaitlistFill;
